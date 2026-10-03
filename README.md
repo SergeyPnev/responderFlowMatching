@@ -1,7 +1,5 @@
 # Responder-weighted flow matching for cell-painting perturbation images
 
-Anonymous code release for a paper under double-blind review.
-
 Not every cell in a treated well responds to the perturbation. This code
 
 1. estimates a **per-crop responder score** `s` from precomputed embeddings, by
@@ -18,7 +16,7 @@ Datasets: BBBC021 (3 channels), cpg0000 / JUMP (5 channels) and RxRx1 (6 channel
 
 ## Layout
 
-All code is in `code/`; every command below is run from there.
+All code is in `code/`
 
 | folder | contents |
 |---|---|
@@ -41,8 +39,7 @@ pip install -r requirements.txt
 ```
 
 Pretrained embedding models are downloaded from the Hugging Face hub on first
-use (`facebook/dinov2-giant`, `CaicedoLab/MorphEm`). Set `USE_TF=0` if
-TensorFlow is installed in the same environment.
+use (`facebook/dinov2-giant`, `CaicedoLab/MorphEm`)
 
 ### CellProfiler environment
 
@@ -96,7 +93,7 @@ BBBC021 crops are stored with channels in the order actin, tubulin, DNA.
 
 ## Pipeline
 
-Commands are given for BBBC021; cpg0000 and RxRx1 differ only in the dataset
+Commands are given for BBBC021. cpg0000 and RxRx1 differ only in the dataset
 name, image directory and config. Each script's `--help` and header list the
 remaining options.
 

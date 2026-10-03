@@ -1,0 +1,160 @@
+# Per-crop latent CellFlux on BBBC021 with the HiDDEN responder tilt,
+# fingerprint-conditioned. Differs from cellflux_percrop_bbbc.yaml in:
+#   1. text_emb: IMPA's emb_fp.csv, the 1024-d Morgan count fingerprints
+#      CellFlux conditions on (dit.text_dim follows). The table is
+#      compound-indexed and the flow index is shared with the other config.
+#   2. flow.p_cond_drop_per_batch and dit.null_mode: zero, as CellFlux.
+#   3. out_dir.
+# The VAE, the latent cache, the scores and the MoA head are the same files.
+#
+# One control crop -> one treated crop in the frozen VAE latent space.
+# gamma is set on the command line (--gamma); gamma: 0.0 is the baseline.
+
+out_dir: /path/to/workdir/results/iclr/cellflux_percrop/bbbc021_fp
+seed: 0
+input_range: "01"
+gamma: 0.0
+
+# ---- index and scores ---------------------------------------------------- #
+# Built by flow_index.py and cache_scores.py. Both must come from the
+# same fold dir (metadata/split_iclr).
+flow_index:  /path/to/workdir/results/iclr/phase4/flow_index_bbbc021.parquet
+crop_scores: /path/to/workdir/results/iclr/phase4/cache/crop_scores.parquet
+# crop_id / y / kept for every crop. Crops the scorer's QC dropped have no
+# score and are excluded from training.
+crop_universe: /path/to/workdir/results/iclr/phase4/cache/crop_universe.parquet
+
+# Precomputed VAE latents (precompute_latents.py). The encode is deterministic
+# (posterior mode), so the cache equals an on-the-fly encode; remove this key
+# to encode on the fly (slower).
+latents: /path/to/workdir/results/iclr/phase4/latents_bbbc021_e227
+
+# ---- splits ----------------------------------------------------------------- #
+# metadata/split_iclr:
+#   train -> ds_bbbc021_train_iid.csv
+#   val   -> ds_bbbc021_val_iid.csv        same compounds/plates; the FID/KID set
+#   test  -> ds_bbbc021_test_ood_dmso.csv  held-out compounds + their DMSO
+# train_splits picks the target distribution. control_splits picks the DMSO
+# source pool and is wider: some train plates carry no DMSO row in the train
+# csv, and train+test reaches every train plate. val's DMSO stays out.
+train_splits:   [train]
+control_splits: [train, test]
+eval_split:     val            # recorded for the FID/KID job; unused in training
+
+# ---- data ------------------------------------------------------------------ #
+img_size: 96
+n_channels: 3
+batch_size: 256
+# Which cell the responder weights are normalised in: `unit` or `unit_plate`.
+# Control partners are drawn within plate; unit_plate holds every plate at its
+# gamma=0 share, so the tilt is purely within plate.
+weight_norm: unit_plate
+num_workers: 8
+# The conditioning table. `.csv` = compound-indexed fingerprints, `.pt` =
+# CellCLIP prompt embeddings.
+text_emb: /path/to/src/IMPA/embeddings/csv/emb_fp.csv
+
+# ---- optim ----------------------------------------------------------------- #
+# CellFlux bbbc021: lr 1e-4, betas (0.9, 0.95), constant schedule, EMA on.
+lr: 1.0e-4
+optimizer_betas: [0.9, 0.95]
+weight_decay: 0.0
+use_ema: true
+ema_decay: 0.9999
+# Two-stage curriculum: stage 1 uses a pure-Gaussian source, stage 2 the
+# control source with noise injection (p_noise_source below).
+stage1_epochs: 100                 # noise -> treated
+stage2_epochs: 1000                # control -> treated
+log_every: 50
+ckpt_every: 2000
+# keep_every writes numbered evaluation-only snapshots (model + EMA, no
+# optimiser state) every that many steps, in stage 2 only: a stage-1
+# checkpoint maps Gaussian -> target and cannot be evaluated on the
+# control -> target task. 12300 steps = every 50 epochs at batch 256.
+keep_every: 12300
+
+# ---- TensorBoard image previews -------------------------------------------- #
+# Scalars (loss, ess, ess_frac, w_max) are always written. These add a 4-row
+# RGB preview: control source / real treated / VAE reconstruction / generated.
+img_every: 500                   # 0 disables previews (and skips loading the
+                                 # VAE decoder when training off cached latents)
+n_preview: 8                     # crops per row, spread across units
+sample_steps: 50                 # nfe, as CellFlux's --ode_options '{"nfe": 50}'
+cfg_scale: 1.2                   # = CellFlux --cfg_scale 0.2: theirs is
+                                 # (1+w)*cond - w*uncond, ours
+                                 # uncond + s*(cond-uncond), so s = 1+w
+ode_method: heun2                # CellFlux --ode_method heun2
+edm_schedule: true               # CellFlux --edm_schedule
+img_percentile: 99.5             # display stretch, computed on the REAL crops
+                                 # and applied to every row so a dim generation
+                                 # is not brightened to match its target
+# Which stored channel goes to R, G, B (display only).
+rgb_channels: [1, 2, 0]
+
+# ---- automatic FID/KID when training finishes ------------------------------ #
+# Runs eval_flow.compute in-process on the arm's last.pt after the last epoch.
+# Each arm writes its own eval_metrics.json; `eval_flow.py --collect` gathers
+# them.
+eval_after_train: true
+eval:
+  weights: ema                   # what CellFlux evaluates
+  steps: 50                      # nfe
+  batch_size: 64
+  resp_q: 0.5                    # top half of each unit = the responder reference
+  kid_subset: 100
+  no_inception: false            # true = latent energy distance only, no torch-fidelity
+  # MoA head (moa_eval.py), fitted once before the sweep:
+  #   python evaluation/moa_eval.py --config configs/cellflux_percrop_bbbc_fp.yaml
+  # An arm that finishes before the head exists is evaluated without MoA. The
+  # head scores images, not conditions, so it is shared by both conditionings.
+  moa_head: /path/to/workdir/results/iclr/cellflux_percrop/bbbc021/moa/moa_head.pt
+
+# ---- frozen VAE (must match the checkpoint) -------------------------------- #
+vae:
+  # Frozen copy of the autoencoder checkpoint that encoded the latent cache.
+  # The same file as the CellCLIP-conditioned arms use, so both conditionings
+  # share one latent cache.
+  ckpt: /path/to/workdir/results/iclr/cellflux_percrop/bbbc021/vae/epoch_0227.pt
+  use_ema: true
+  # `auto` reads suggested_scaling_factor (= 1/std) from the latent cache's
+  # latents_meta.json. A literal number is required when encoding on the fly.
+  scaling_factor: auto
+  model:
+    in_channels:        3
+    out_channels:       3
+    z_channels:         8
+    resolution:         96
+    ch:                 128
+    ch_mult:            [1, 2, 4, 4]
+    enc_num_res_blocks: 2
+    dec_num_res_blocks: 3
+    attn_resolutions:   [12]
+    dropout:            0.0
+
+# ---- DiT velocity field ---------------------------------------------------- #
+dit:
+  patch_size: 2
+  hidden: 384
+  depth: 12
+  heads: 6
+  mlp_ratio: 4.0
+  text_dim: 1024                 # emb_fp.csv width (CellCLIP's is 512)
+  # zero = the unconditional branch adds nothing to the timestep embedding (as
+  # CellFlux), instead of a learned null embedding. See dit.CondEmbedder.
+  null_mode: zero
+
+# ---- rectified flow -------------------------------------------------------- #
+# Matched to CellFlux's bbbc021 settings:
+#   path noisy       = interpolant z_t = (1-t)z0 + t z1 + sin^2(pi t) eps;
+#                      `cond_ot` is the straight interpolant without that noise
+#   skewed_timesteps = --skewed_timesteps
+#   p_noise_source / source_noise_std = --noise_prob 0.5 / --noise_level 1.0
+#   p_cond_drop      = --class_drop_prob 0.2
+flow:
+  path: noisy
+  skewed_timesteps: true
+  sigma_noise: 1.0
+  p_noise_source: 0.5
+  p_cond_drop: 0.2
+  p_cond_drop_per_batch: true      # as CellFlux: one draw for the whole batch
+  source_noise_std: 1.0

@@ -1,0 +1,25 @@
+# Main environment (scorer, VAE, flow, evaluation). Python 3.10.
+# CellProfiler runs in its own environment, see README "CellProfiler environment".
+torch>=2.1
+torchvision
+numpy<2
+pandas
+pyarrow
+scipy
+scikit-learn
+scikit-image
+statsmodels
+h5py
+pyyaml
+tqdm
+pillow
+tifffile
+matplotlib
+albumentations
+lpips
+torchmetrics
+torch-fidelity
+tensorboard
+transformers
+huggingface_hub
+safetensors

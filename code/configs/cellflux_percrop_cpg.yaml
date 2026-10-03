@@ -1,0 +1,103 @@
+# Per-crop latent CellFlux on CPG (cpg0000 / JUMP pilot, U2OS, 5 channels), with
+# the HiDDEN responder tilt. Same model, flow and optimiser as
+# cellflux_percrop_bbbc_fp.yaml; the data and the conditioning table differ.
+#
+# Perturbation = BROAD_SAMPLE, control = STATE == control, and the pairing
+# group `plate` = the physical plate (perturbation_id.py).
+# gamma is set on the command line (--gamma).
+
+out_dir: /path/to/workdir/results/iclr/cellflux_percrop/cpg
+seed: 0
+input_range: "01"
+gamma: 0.0
+
+flow_index:    /path/to/workdir/results/iclr/phase4/cpg/flow_index.parquet
+crop_scores:   /path/to/workdir/results/iclr/phase4/cpg/cache/crop_scores.parquet
+crop_universe: /path/to/workdir/results/iclr/phase4/cpg/cache/crop_universe.parquet
+latents:       /path/to/workdir/results/iclr/phase4/cpg/latents_s500k
+
+# metadata/split_iclr has train and val only. Training pairs with train
+# controls; the eval pairs val treated crops with val controls, as CellFlux's
+# test loader does.
+train_splits:        [train]
+control_splits:      [train]
+eval_split:          val
+eval_control_splits: [val]
+
+img_size: 96
+n_channels: 5
+batch_size: 256
+weight_norm: unit_plate
+num_workers: 8
+# CellFlux's CPG table: 1024-d Morgan + 200-d gene2vec for compounds, 328-d
+# CRISPR and 456-d ORF embeddings zero-padded to 1224, indexed by BROAD_SAMPLE.
+text_emb: /path/to/workdir/data/embeddings/cpg0000_combined_embeddings.csv
+
+lr: 1.0e-4
+optimizer_betas: [0.9, 0.95]
+weight_decay: 0.0
+use_ema: true
+ema_decay: 0.9999
+stage1_epochs: 100                 # noise -> treated
+stage2_epochs: 1000                # control -> treated
+log_every: 50
+ckpt_every: 2000
+# steps/epoch is known only after QC, so the snapshot cadence is in epochs
+keep_every_epochs: 50
+
+img_every: 500
+n_preview: 8
+sample_steps: 50
+cfg_scale: 1.2                     # CellFlux --cfg_scale 0.2, our convention s = 1+w
+ode_method: heun2
+edm_schedule: true
+img_percentile: 99.5
+# display only; stored channel order is assumed (DNA, RNA, ER, AGP, Mito)
+rgb_channels: [0, 1, 2]
+
+eval_after_train: true
+eval:
+  weights: ema
+  steps: 50
+  batch_size: 64
+  resp_q: 0.5
+  kid_subset: 100
+  no_inception: false
+  # pheno_eval.py fit writes it; an arm finishing before it exists is scored
+  # without top-k / replicate mAP
+  pheno_dir: /path/to/workdir/results/iclr/cellflux_percrop/cpg/pheno
+
+vae:
+  # frozen copy of the CPG autoencoder checkpoint (ckpt_at_step.py --copy_to)
+  ckpt: /path/to/workdir/results/iclr/cellflux_percrop/cpg/vae/vae_s500k.pt
+  use_ema: true
+  scaling_factor: auto
+  model:
+    in_channels:        5
+    out_channels:       5
+    z_channels:         8
+    resolution:         96
+    ch:                 128
+    ch_mult:            [1, 2, 4, 4]
+    enc_num_res_blocks: 2
+    dec_num_res_blocks: 3
+    attn_resolutions:   [12]
+    dropout:            0.0
+
+dit:
+  patch_size: 2
+  hidden: 384
+  depth: 12
+  heads: 6
+  mlp_ratio: 4.0
+  text_dim: 1224
+  null_mode: zero
+
+flow:
+  path: noisy
+  skewed_timesteps: true
+  sigma_noise: 1.0
+  p_noise_source: 0.5
+  p_cond_drop: 0.2
+  p_cond_drop_per_batch: true
+  source_noise_std: 1.0

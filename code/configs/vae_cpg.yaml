@@ -1,0 +1,54 @@
+# VAE on CPG (U-2 OS, 5 channels: cell-painting fluorophores) at 96x96, f=8 -> 12x12x8 latent.
+
+out_dir: /path/to/workdir/results/iclr/autoencoder/cpg
+seed: 0
+
+epochs: 100                # CPG is larger; fewer epochs suffice
+batch_size: 64
+num_workers: 8
+lr: 4.5e-6
+ema_decay: 0.999
+input_range: "01"
+log_every: 100
+img_every: 1000
+val_every: 5000
+ckpt_every: 10000
+
+model:
+  in_channels:          5
+  out_channels:         5
+  z_channels:           8
+  resolution:           96
+  ch:                   128
+  ch_mult:              [1, 2, 4, 4]   # 96 -> 48 -> 24 -> 12
+  enc_num_res_blocks:   2
+  dec_num_res_blocks:   3
+  attn_resolutions:     [12]
+  dropout:              0.0
+
+loss:
+  disc_num_layers:      2
+  disc_ndf:             64
+  disc_weight:          0.5
+  disc_start:           50000
+  kl_weight:            1.0e-6
+  perceptual_weight:    1.0
+  pixel_weight:         1.0
+  lpips_net:            vgg
+
+# set the /path/to/workdir prefix to your data root
+data:
+  name: cpg
+  args:
+    img_dir:        /path/to/workdir/data/IMPA_sources/datasets/cpg0000_u2os_normalized_segmented_large
+    fold_path:      /path/to/workdir/data/IMPA_sources/datasets/cpg0000_u2os_normalized_segmented_large/metadata/split_iclr
+    dataset:        cpg
+    fold:           0
+    img_size:       96
+    treatment_col:  CPD_NAME
+    plate_col:      PLATE
+    moa_col:        PERT_TYPE
+    return_moa:     false
+    text_emb_path:  null
+
+fid_max_samples: 10000

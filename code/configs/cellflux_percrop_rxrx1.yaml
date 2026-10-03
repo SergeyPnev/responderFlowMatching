@@ -1,0 +1,100 @@
+# Per-crop latent CellFlux on RxRx1 (the U2OS subset CellFlux uses, 6 channels),
+# with the HiDDEN responder tilt. Same model, flow and optimiser as
+# cellflux_percrop_bbbc_fp.yaml; the data and the conditioning table differ.
+#
+# Perturbation = the siRNA's gene (CPD_NAME); control = ANNOT negative_control;
+# positive controls are not in the flow index. The pairing group `plate` is the
+# experiment (BATCH), as CellFlux pairs (manifest.py).
+# gamma is set on the command line (--gamma).
+
+out_dir: /path/to/workdir/results/iclr/cellflux_percrop/rxrx1
+seed: 0
+input_range: "01"
+gamma: 0.0
+
+flow_index:    /path/to/workdir/results/iclr/phase4/rxrx1/flow_index.parquet
+crop_scores:   /path/to/workdir/results/iclr/phase4/rxrx1/cache/crop_scores.parquet
+crop_universe: /path/to/workdir/results/iclr/phase4/rxrx1/cache/crop_universe.parquet
+latents:       /path/to/workdir/results/iclr/phase4/rxrx1/latents_s500k
+
+# Training pairs with train controls; the eval pairs val treated crops with val
+# controls, as CellFlux's test loader does.
+train_splits:        [train]
+control_splits:      [train]
+eval_split:          val
+eval_control_splits: [val]
+
+img_size: 96
+n_channels: 6
+batch_size: 256
+weight_norm: unit_plate
+num_workers: 8
+# CellFlux's RxRx1 table: 200-d gene2vec, indexed by gene symbol
+text_emb: /path/to/src/IMPA/embeddings/csv/rxrx1_gene2vec_embeddings.csv
+
+lr: 1.0e-4
+optimizer_betas: [0.9, 0.95]
+weight_decay: 0.0
+use_ema: true
+ema_decay: 0.9999
+stage1_epochs: 100
+stage2_epochs: 1000
+log_every: 50
+ckpt_every: 2000
+keep_every_epochs: 50
+
+img_every: 500
+n_preview: 8
+sample_steps: 50
+cfg_scale: 1.2
+ode_method: heun2
+edm_schedule: true
+img_percentile: 99.5
+# display only; stored channel order is assumed (nuclei, ER, actin,
+# nucleoli+RNA, mito, golgi)
+rgb_channels: [0, 1, 2]
+
+eval_after_train: true
+eval:
+  weights: ema
+  steps: 50
+  batch_size: 64
+  resp_q: 0.5
+  kid_subset: 100
+  no_inception: false
+  pheno_dir: /path/to/workdir/results/iclr/cellflux_percrop/rxrx1/pheno
+
+vae:
+  # frozen copy of the RxRx1 autoencoder checkpoint (ckpt_at_step.py)
+  ckpt: /path/to/workdir/results/iclr/cellflux_percrop/rxrx1/vae/vae_s500k.pt
+  use_ema: true
+  scaling_factor: auto
+  model:
+    in_channels:        6
+    out_channels:       6
+    z_channels:         8
+    resolution:         96
+    ch:                 128
+    ch_mult:            [1, 2, 4, 4]
+    enc_num_res_blocks: 2
+    dec_num_res_blocks: 3
+    attn_resolutions:   [12]
+    dropout:            0.0
+
+dit:
+  patch_size: 2
+  hidden: 384
+  depth: 12
+  heads: 6
+  mlp_ratio: 4.0
+  text_dim: 200
+  null_mode: zero
+
+flow:
+  path: noisy
+  skewed_timesteps: true
+  sigma_noise: 1.0
+  p_noise_source: 0.5
+  p_cond_drop: 0.2
+  p_cond_drop_per_batch: true
+  source_noise_std: 1.0

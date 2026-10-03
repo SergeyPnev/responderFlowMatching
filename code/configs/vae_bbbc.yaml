@@ -1,0 +1,61 @@
+# VAE on BBBC021 (MCF-7, 3 channels) at 96x96, f=8 -> 12x12x8 latent.
+
+out_dir: /path/to/workdir/results/iclr/autoencoder/bbbc021
+seed: 0
+
+# Trainer
+epochs: 200
+batch_size: 64
+num_workers: 8
+lr: 4.5e-6                 # LDM's base_learning_rate, passed to AdamW raw
+ema_decay: 0.999
+input_range: "01"          # images are in [0,1]
+log_every: 50
+img_every: 500
+val_every: 2000
+ckpt_every: 5000
+
+# Model: AutoencoderKL
+model:
+  in_channels:          3
+  out_channels:         3
+  z_channels:           8
+  resolution:           96
+  ch:                   128
+  ch_mult:              [1, 2, 4, 4]   # 96 -> 48 -> 24 -> 12
+  enc_num_res_blocks:   2
+  dec_num_res_blocks:   3
+  attn_resolutions:     [12]           # attention only at 12x12 bottleneck
+  dropout:              0.0
+
+# Losses
+loss:
+  disc_num_layers:      2              # shallow PatchGAN for 96x96
+  disc_ndf:             64
+  disc_weight:          0.5
+  disc_start:           50000          # warmup: no GAN for first 50k steps
+  kl_weight:            1.0e-6
+  perceptual_weight:    1.0
+  pixel_weight:         1.0
+  lpips_net:            vgg
+
+# Data: forwarded to build_bbbc as `args`
+data:
+  name: bbbc
+  args:
+    img_dir:        /path/to/workdir/data/IMPA_sources/datasets/bbbc021_all
+    fold_path:      /path/to/workdir/data/IMPA_sources/datasets/bbbc021_all/metadata/split_filtered
+    dataset:        bbbc021        # used to build fold filename
+    fold:           0
+    img_size:       96
+    n_channels:     3
+    treatment_col:  CPD_NAME
+    plate_col:      PLATE
+    moa_col:        ANNOT
+    smiles_col:     SMILES
+    return_moa:     true
+    text_emb_path:  null                # not needed for VAE training
+    exclude_compounds: []
+
+# Eval-only
+fid_max_samples: 10000

@@ -1,0 +1,62 @@
+# VAE on RxRx1 (U-2 OS, 6 channels: nuclei / ER / actin / nucleoli+RNA / mito / golgi)
+# at 96x96, f=8 -> 12x12x8 latent.
+
+out_dir: /path/to/workdir/results/iclr/autoencoder/rxrx1
+seed: 0
+
+epochs: 100
+batch_size: 64
+num_workers: 8
+lr: 4.5e-6
+ema_decay: 0.999
+input_range: "01"
+log_every: 100
+img_every: 1000
+val_every: 5000
+ckpt_every: 10000
+
+model:
+  in_channels:          6
+  out_channels:         6
+  z_channels:           8
+  resolution:           96
+  ch:                   128
+  ch_mult:              [1, 2, 4, 4]   # 96 -> 48 -> 24 -> 12
+  enc_num_res_blocks:   2
+  dec_num_res_blocks:   3
+  attn_resolutions:     [12]
+  dropout:              0.0
+
+loss:
+  disc_num_layers:      2
+  disc_ndf:             64
+  disc_weight:          0.5
+  disc_start:           50000
+  kl_weight:            1.0e-6
+  perceptual_weight:    1.0
+  pixel_weight:         1.0
+  lpips_net:            vgg
+
+# Optional LR schedule; `constant` = no schedule.
+scheduler:
+  name: constant                       # constant | cosine
+  warmup_steps: 0
+  min_lr_scale: 0.1
+
+# set the /path/to/workdir prefix to your data root
+data:
+  name: rxrx1
+  args:
+    img_dir:        /path/to/workdir/data/IMPA_sources/datasets/rxrx1
+    fold_path:      /path/to/workdir/data/IMPA_sources/datasets/rxrx1/metadata/split_iclr
+    dataset:        rxrx1          # used to build fold filename
+    fold:           0
+    img_size:       96
+    n_channels:     6
+    treatment_col:  CPD_NAME
+    plate_col:      BATCH          # domain = experiment/batch, per CellFlux
+    moa_col:        ANNOT
+    return_moa:     false
+    text_emb_path:  null           # not needed for VAE training
+
+fid_max_samples: 10000
